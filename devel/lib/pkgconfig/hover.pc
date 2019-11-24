@@ -1,0 +1,8 @@
+prefix=/home/carlos/project_ws/devel
+
+Name: hover
+Description: Description of hover
+Version: 0.0.0
+Cflags: 
+Libs: -L/home/carlos/project_ws/devel/lib 
+Requires: 
