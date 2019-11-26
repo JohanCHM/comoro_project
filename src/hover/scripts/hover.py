@@ -9,6 +9,7 @@
 import argparse             # for manipulaton of parameters
 import csv                  # for saving data into a csv file
 import numpy as np          # for manipulation of data
+import tf                   # transformation between euler and quaternions
 
 # ROS modules
 import rospy
@@ -37,7 +38,7 @@ class MyDrone:
 
         samplingTime = 0.1  # 100 [ms]
 
-        self.hoveringPoint = np.array([0, 0, 2, 0, 0, np.deg2rad(0)])
+        self.hoveringPoint = np.array([1, 7, 2, 0, 0, np.deg2rad(0)])
 
         self.freqTopic = 10  # Frequency of topic messages, 10HZ
 
@@ -84,8 +85,33 @@ class MyDrone:
         self.cmdPub = rospy.Publisher(
             '/bebop/cmd_vel', geometry_msgs.msg.Twist, queue_size=10)
 
+        # ------ Visualization of trajectories for RVIZ
+        self.rvizMsg = nav_msgs.msg.Odometry()
+        self.rvizHeader = std_msgs.msg.Header()
+        self.rvizHeader.frame_id = "/odom"
+
+         # Publisher for visualization
+        self.rvizPub = rospy.Publisher(
+            'drone_odometry', nav_msgs.msg.Odometry, queue_size=10)
+
+        # Subscriber to check for every pose into a messge for rviz
+        if self.simulationMode:
+            print ("RVIZ Subscriber for Simulation mode at {m}".format(m=self.rvizHeader.frame_id))
+            self.rvizSubscriber = rospy.Subscriber(
+                self.simulationNodeSubscriber,
+                nav_msgs.msg.Odometry,
+                self.robotSimPosOr)
+
+        else:
+            print ("RVIZ Subscriber for Regular mode at {m}".format(m=self.rvizHeader.frame_id))
+            self.rvizSubscriber = rospy.Subscriber(
+                self.regularNodeSubscriber,
+                geometry_msgs.msg.TransformStamped,
+                self.robotPosOr)
+            
+
         # ----- Drone Operation stage
-        # self.takeoff(3)
+        self.takeoff(3)
 
         # Control during simulation mode
         if self.simulationMode:
@@ -157,6 +183,58 @@ class MyDrone:
         while rospy.Time.now() < endTime:  # publication of message while duration
             landPub.publish(std_msgs.msg.Empty())
             self.rate.sleep()
+
+    def robotSimPosOr(self, message):
+        """Visualization of the odometry nav msgs/Odometry"""  
+        dronePosInertial = support.odometryMsg2InertialCoordinates(message)  
+
+        # constructing poses part of the message
+        self.rvizMsg.pose.pose.position.x = dronePosInertial[0]
+        self.rvizMsg.pose.pose.position.y = dronePosInertial[1]
+        self.rvizMsg.pose.pose.position.z = dronePosInertial[2]
+
+        # Orientations into quaternions
+        quat = tf.transformations.quaternion_from_euler(
+            0, 0, dronePosInertial[3], 'ryxz')
+
+        # constructing orientation part of the message
+        self.rvizMsg.pose.pose.orientation.x = quat[0]
+        self.rvizMsg.pose.pose.orientation.y = quat[1]
+        self.rvizMsg.pose.pose.orientation.z = quat[2]
+        self.rvizMsg.pose.pose.orientation.w = quat[3]
+
+        # Update of the Header
+        self.rvizHeader.stamp = rospy.Time.now()
+        self.rvizMsg.header = self.rvizHeader
+
+        # Publish 
+        self.rvizPub.publish(self.rvizMsg)
+
+    def robotPosOr(self, message):
+        """Visualization of the odometry nav geometry_msgs.TransformStamped """  
+        dronePosInertial = support.transformedStampedMsg2InertialCoordinates(message)  
+
+        # constructing poses part of the message
+        self.rvizMsg.pose.pose.position.x = dronePosInertial[0]
+        self.rvizMsg.pose.pose.position.y = dronePosInertial[1]
+        self.rvizMsg.pose.pose.position.z = dronePosInertial[2]
+
+        # Orientations into quaternions
+        quat = tf.transformations.quaternion_from_euler(
+            0, 0, dronePosInertial[3], 'ryxz')
+
+        # constructing orientation part of the message
+        self.rvizMsg.pose.pose.orientation.x = quat[0]
+        self.rvizMsg.pose.pose.orientation.y = quat[1]
+        self.rvizMsg.pose.pose.orientation.z = quat[2]
+        self.rvizMsg.pose.pose.orientation.w = quat[3]
+
+        # Update of the Header
+        self.rvizHeader.stamp = rospy.Time.now()
+        self.rvizMsg.header = self.rvizHeader
+
+        # Publish 
+        self.rvizPub.publish(self.rvizMsg)
 
     def droneController(self, message):
         """"Control the drone"""
